@@ -8,7 +8,7 @@
  *
  * \author Ted Kolberg, ND
  * 
- * \version $Id: PositionCalc.h,    v 2.1  2006/05/19 20:00:00 tkolberg Exp $
+ * \version $Id: PositionCalc.h,v 1.1 2006/05/23 16:50:47 askew Exp $
  *
  */
 
@@ -52,8 +52,8 @@ class PositionCalc
   static Double32_t  param_T0_;
   static Double32_t  param_W0_;
   static std::string param_CollectionType_;
-  static const std::map<EBDetId,EcalRecHit> *storedRecHitsMap_;
-  static const CaloSubdetectorGeometry *storedSubdetectorGeometry_;
+  static std::map<EBDetId,EcalRecHit> *storedRecHitsMap_;
+  static CaloSubdetectorGeometry *storedSubdetectorGeometry_;
 
 };
 
