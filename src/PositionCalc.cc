@@ -37,6 +37,18 @@ math::XYZPoint PositionCalc::Calculate_Location(std::vector<DetId> passedDetIds)
   if(storedRecHitsMap_ == NULL || param_CollectionType_ == "" || storedSubdetectorGeometry_ == NULL)
     throw(std::runtime_error("\n\nPositionCalc::Calculate_Location called uninitialized or wrong initialization.\n\n"));
 
+  std::vector<DetId> validDetIds;
+
+  // Check that DetIds are nonzero
+  std::vector<DetId>::iterator n;
+  for (n = passedDetIds.begin(); n != passedDetIds.end(); n++) {
+    if (((*n) != DetId(0)) 
+	&& (storedRecHitsMap_->find(*n) != storedRecHitsMap_->end()))
+      validDetIds.push_back(*n);
+  }
+
+  passedDetIds.clear();
+  passedDetIds = validDetIds;
 
   // Figure out what the central crystal is and also calculate the 
   // total energy
@@ -60,25 +72,6 @@ math::XYZPoint PositionCalc::Calculate_Location(std::vector<DetId> passedDetIds)
     
     eTot += e_i;
   }
-
-  // T-zero values for various scenarios
-  const double bar_t_zero = 5.7;
-  const double end_t_zero = 4.0;
-  const double pre_t_zero = 0.4;
-
-  if (param_CollectionType_ == "EcalBarrel") {
-    param_T0_ = bar_t_zero;
-  }
-
-  if (param_CollectionType_ == "EcalEndcap") {
-    param_T0_ = end_t_zero;
-  }
-
-  if (param_CollectionType_ == "Presh") {
-    param_T0_ = pre_t_zero;
-  }
-
-
   
   // Calculate shower depth
   float depth = param_X0_ * (param_T0_ + log(eTot));
@@ -164,6 +157,19 @@ math::XYZPoint PositionCalc::Calculate_Location(std::vector<DetId> passedDetIds)
 std::map<std::string,double> PositionCalc::Calculate_Covariances(math::XYZPoint passedPoint,
                                                                     std::vector<DetId> passedDetIds)
 {
+
+  std::vector<DetId> validDetIds;
+
+  // Check that DetIds are nonzero
+  std::vector<DetId>::iterator m;
+  for (m = passedDetIds.begin(); m != passedDetIds.end(); m++) {
+    if (((*m) != DetId(0))
+	&& (storedRecHitsMap_->find(*m) != storedRecHitsMap_->end()))
+      validDetIds.push_back(*m);
+  }
+
+  passedDetIds.clear();
+  passedDetIds = validDetIds;
   
   // Check to see that PositionCalc was initialized.  Throw an error if not.
 
