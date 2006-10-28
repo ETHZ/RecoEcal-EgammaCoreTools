@@ -1,17 +1,9 @@
 #include "RecoEcal/EgammaCoreTools/interface/PositionCalc.h"
 #include "Geometry/CaloGeometry/interface/CaloCellGeometry.h"
 #include "Geometry/CaloGeometry/interface/TruncatedPyramid.h"
+#include "FWCore/MessageLogger/interface/MessageLogger.h"
 
-
-//Set Default Values 
-bool        PositionCalc::param_LogWeighted_;
-Double32_t  PositionCalc::param_X0_;
-Double32_t  PositionCalc::param_T0_; 
-Double32_t  PositionCalc::param_W0_;
-const EcalRecHitCollection *PositionCalc::storedRecHitsMap_ = NULL;
-const CaloSubdetectorGeometry *PositionCalc::storedSubdetectorGeometry_ = NULL;
-
-void PositionCalc::Initialize(std::map<std::string,double> providedParameters, 
+PositionCalc::PositionCalc(std::map<std::string,double> providedParameters, 
 			      EcalRecHitCollection const *passedRecHitsMap,
 			      const CaloSubdetectorGeometry *passedGeometry) 
 {
@@ -23,8 +15,6 @@ void PositionCalc::Initialize(std::map<std::string,double> providedParameters,
   storedRecHitsMap_ = passedRecHitsMap;
   storedSubdetectorGeometry_ = passedGeometry;
 }
-
-
 
 math::XYZPoint PositionCalc::Calculate_Location(std::vector<DetId> passedDetIds)
 {
@@ -75,7 +65,13 @@ math::XYZPoint PositionCalc::Calculate_Location(std::vector<DetId> passedDetIds)
   }
   
   // Calculate shower depth
-  float depth = param_X0_ * (param_T0_ + log(eTot));
+  float depth = 0.;
+  if(eTot<=0.) {
+    edm::LogError("NegativeClusterEnergy") << "cluster with negative energy: " << eTot
+                                      << " setting depth to 0.";
+  } else {
+    depth = param_X0_ * (param_T0_ + log(eTot));
+  }
 
   // Get position of center cell from shower depth
   const CaloCellGeometry* center_cell = 
@@ -103,7 +99,11 @@ math::XYZPoint PositionCalc::Calculate_Location(std::vector<DetId> passedDetIds)
     double e_j = itj->energy();
 
     if (param_LogWeighted_) {
-      weight = max(0., param_W0_ + log(e_j/eTot));
+       if(eTot<=0.) {
+         weight = 0.;
+       } else {
+         weight = std::max(0., param_W0_ + log( fabs(e_j)/eTot) );
+       }
     } else {
       weight = e_j/eTot;
     }
@@ -139,10 +139,6 @@ math::XYZPoint PositionCalc::Calculate_Location(std::vector<DetId> passedDetIds)
   if (cluster_phi < -M_PI)
     cluster_phi += 2.*M_PI;
 
-  //double cluster_eta = -log(tan(cluster_theta*0.5));
-  //std::cout << "Cluster eta = " << cluster_eta << std::endl;
-  //std::cout << "Cluster phi = " << cluster_phi << std::endl;
-
   double radius = sqrt(center_pos.x()*center_pos.x()
 		       + center_pos.y()*center_pos.y()
 		       + center_pos.z()*center_pos.z());
@@ -171,35 +167,19 @@ std::map<std::string,double> PositionCalc::Calculate_Covariances(math::XYZPoint 
 
   passedDetIds.clear();
   passedDetIds = validDetIds;
-  
+
   // Check to see that PositionCalc was initialized.  Throw an error if not.
 
   if(storedRecHitsMap_ == NULL || storedSubdetectorGeometry_ == NULL)
     throw(std::runtime_error("\n\nPositionCalc::Calculate_Covariance called uninitialized or wrong initialization.\n\n"));
 
   // Init cov variable
-
   double covEtaEta=0, covEtaPhi=0, covPhiPhi=0;
-
-  // Find eta, phi of passedPoint 
-
-  double pX = passedPoint.x();
-  double pY = passedPoint.y();
-  double pZ = passedPoint.z();
-  
-  double pEta = -log(tan(atan(sqrt(pX*pX+pY*pY)/pZ)*0.5));
-  double pPhi = atan2(pY,pX);
-
-  // Init variables for kth cell
-
-  double kX = 0., kY = 0., kZ = 0., kEta = 0., kPhi = 0., weight = 0., wTot = 0., w_min = 0.;
-
   double eTot = 0.;
 
   // Sum total energy for weighting
-
   std::vector<DetId>::iterator n;
-  
+
   for (n = passedDetIds.begin(); n != passedDetIds.end(); n++) {
     EcalRecHitCollection::const_iterator itt = storedRecHitsMap_->find(*n);
     eTot += itt->energy();
@@ -208,39 +188,44 @@ std::map<std::string,double> PositionCalc::Calculate_Covariances(math::XYZPoint 
   // Main loop to calculate covariances
     
   if (eTot > 0.) {  
-    
+
+    // Find eta, phi of passedPoint 
+    double pX = passedPoint.x();
+    double pY = passedPoint.y();
+
+    double pEta = passedPoint.Eta();
+    double pPhi = atan2(pY,pX);
+
+    // Init variables for kth cell
+    double kX = 0., kY = 0., kZ = 0., kEta = 0., kPhi = 0., weight = 0., wTot = 0., w_min = 0.;
+
     std::vector<DetId>::iterator k;
-  
     for (k = passedDetIds.begin(); k != passedDetIds.end(); k++) {
-          
+
       // Find out what the physical location of the kth cell is
       DetId id_ = *k;
       const CaloCellGeometry *this_cell = storedSubdetectorGeometry_->getGeometry(id_);
       GlobalPoint posi = this_cell->getPosition();
+      math::XYZPoint posi2(posi.x(),posi.y(),posi.z());
 
       kX = posi.x();
       kY = posi.y();
       kZ = posi.z();
 
-      kEta = -log(tan(atan(sqrt(kX*kX+kY*kY)/kZ)*0.5));
+      kEta = posi2.Eta();
       kPhi = atan2(kY,kX);
       EcalRecHitCollection::const_iterator itk = storedRecHitsMap_->find(*k);
       double e_k = itk->energy();
-    
+
       // Do the log weighting
 
       if (param_LogWeighted_) {
-	weight = std::max(w_min, param_W0_ + log(e_k/eTot));
-      }
-
-      // Or else arithmetic weighting
-
-      else {
-	weight = e_k;
+        weight = std::max(w_min, param_W0_ + log( fabs(e_k)/eTot ) );
+      } else { // Or else arithmetic weighting
+        weight = e_k;
       }
 
       // Increment covariances
-      
       covEtaEta += (kEta - pEta)*(kEta - pEta);
       covEtaPhi += (kEta - pEta)*(kPhi - pPhi);
       covPhiPhi += (kPhi - pPhi)*(kPhi - pPhi);
@@ -252,8 +237,8 @@ std::map<std::string,double> PositionCalc::Calculate_Covariances(math::XYZPoint 
     covEtaEta /= wTot;
     covEtaPhi /= wTot;
     covPhiPhi /= wTot;
-  }
-  else {
+
+  } else {
 
     // Warn the user if there was no energy in the cells and return zeroes.
 
