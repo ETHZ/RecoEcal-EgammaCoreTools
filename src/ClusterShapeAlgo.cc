@@ -1,5 +1,3 @@
-#include <iostream>
-
 #include "DataFormats/EcalDetId/interface/EcalSubdetector.h"
 #include "RecoEcal/EgammaCoreTools/interface/ClusterShapeAlgo.h"
 #include "RecoCaloTools/Navigation/interface/CaloNavigator.h"
@@ -8,47 +6,37 @@
 #include "Geometry/CaloTopology/interface/EcalEndcapTopology.h"
 #include "Geometry/CaloTopology/interface/EcalPreshowerTopology.h"
 
-ClusterShapeAlgo::ClusterShapeAlgo(const PositionCalc& passedPositionCalc) {
-  posCalculator_ = passedPositionCalc;
-}
+ClusterShapeAlgo::ClusterShapeAlgo(const PositionCalc& passedPositionCalc, std::map<std::string,double> providedZernikeParameters) :
+  posCalculator_ (passedPositionCalc), providedZernikeParameters_(providedZernikeParameters) {}
 
 reco::ClusterShape ClusterShapeAlgo::Calculate(const reco::BasicCluster &passedCluster,
                                                const EcalRecHitCollection *hits,
                                                const CaloSubdetectorGeometry * geometry,
                                                const CaloSubdetectorTopology* topology)
 {
-  //std::cout << " Calculate_TopEnergy" << std::endl;
   Calculate_TopEnergy(passedCluster,hits);
-  //std::cout << " Calculate_2ndEnergy" << std::endl;
   Calculate_2ndEnergy(passedCluster,hits);
-  //std::cout << " Create_Map" << std::endl;
-  Create_Map(hits,topology);
-  //std::cout << " Calculate_e2x2" << std::endl;
+  Create_DetIdEnergyMap(hits,topology);
+  Create_ZernikeMomentEnergyMap(hits,topology);    
   Calculate_e2x2();
-  //std::cout << " Calculate_e3x2" << std::endl;
   Calculate_e3x2();
-  //std::cout << " Calculate_e3x3" << std::endl;
   Calculate_e3x3();
-  //std::cout << "Calculate_e4x4 " << std::endl;
   Calculate_e4x4();
-  //std::cout << "Calculate_e5x5 " << std::endl;
   Calculate_e5x5();
   Calculate_e2x5Right();
   Calculate_e2x5Left();
   Calculate_e2x5Top();
   Calculate_e2x5Bottom();
-  //std::cout << "Calculate_Covariances " << std::endl;
+  Calculate_PseudoZernikeMoments();
   Calculate_Covariances(passedCluster,hits,geometry);
-  //std::cout << "Calculate_BarrelBasketEnergyFraction " << std::endl;
   Calculate_BarrelBasketEnergyFraction(passedCluster,hits, Eta, geometry);
-  //std::cout << "Calculate_BarrelBasketEnergyFraction " << std::endl;
   Calculate_BarrelBasketEnergyFraction(passedCluster,hits, Phi, geometry);
 
   return reco::ClusterShape(covEtaEta_, covEtaPhi_, covPhiPhi_, eMax_, eMaxId_,
 			    e2nd_, e2ndId_, e2x2_, e3x2_, e3x3_,e4x4_, e5x5_,
 			    e2x5Right_, e2x5Left_, e2x5Top_, e2x5Bottom_,
-			    e3x2Ratio_, 
-                            energyBasketFractionEta_, energyBasketFractionPhi_);
+			    e3x2Ratio_, pseudoZernikeMoments_, 
+			    energyBasketFractionEta_, energyBasketFractionPhi_);
 }
 
 void ClusterShapeAlgo::Calculate_TopEnergy(const reco::BasicCluster &passedCluster,const EcalRecHitCollection *hits)
@@ -109,7 +97,7 @@ void ClusterShapeAlgo::Calculate_2ndEnergy(const reco::BasicCluster &passedClust
   e2ndId_ = e2ndId;
 }
 
-void ClusterShapeAlgo::Create_Map(const EcalRecHitCollection *hits,const CaloSubdetectorTopology* topology)
+void ClusterShapeAlgo::Create_DetIdEnergyMap(const EcalRecHitCollection *hits,const CaloSubdetectorTopology* topology)
 {
   EcalRecHit tempEcalRecHit;
   CaloNavigator<DetId> posCurrent = CaloNavigator<DetId>(eMaxId_,topology );
@@ -146,6 +134,23 @@ void ClusterShapeAlgo::Create_Map(const EcalRecHitCollection *hits,const CaloSub
 
   std::cout << "\n\n\n" << std::endl;
 */  
+}
+
+void ClusterShapeAlgo::Create_ZernikeMomentEnergyMap(const EcalRecHitCollection *hits, const CaloSubdetectorTopology* topology)
+{
+  CaloNavigator<DetId> navPosCurrent = CaloNavigator<DetId>(eMaxId_,topology);
+
+  for(int x = 0; x < 13; x++)
+    for(int y = 0; y < 13; y++)
+    {
+      navPosCurrent.home();
+      navPosCurrent.offsetBy(-6+x,-6+y);
+      
+      if((*navPosCurrent != DetId(0)) && (hits->find(*navPosCurrent) != hits->end()))
+        energyMapZM_.insert(std::make_pair(std::pair<int,int>(-6+x,-6+y), (*hits->find(*navPosCurrent)).energy()));
+      else 
+        energyMapZM_.insert(std::make_pair(std::pair<int,int>(-6+x,-6+y), 0.0));
+    }
 }
 
 void ClusterShapeAlgo::Calculate_e2x2()
@@ -317,6 +322,13 @@ double e2x5T=0.0;
   e2x5Top_=e2x5T;
 }
 
+void ClusterShapeAlgo::Calculate_PseudoZernikeMoments()
+{
+  PseudoZernikeMomentsGenerator pzmGenerator(6, energyMapZM_, true, 0.89, true, PseudoZernikeMomentsGenerator::SEEDCRYSTAL);
+  
+  for(int i = 0; i < 50; i++) pseudoZernikeMoments_.push_back(pzmGenerator.calculateMoment(i));
+}
+
 void ClusterShapeAlgo::Calculate_Covariances(const reco::BasicCluster &passedCluster, const EcalRecHitCollection* hits, const CaloSubdetectorGeometry* geometry)
 {
   std::vector<DetId> usedDetIds;
@@ -341,7 +353,6 @@ void ClusterShapeAlgo::Calculate_BarrelBasketEnergyFraction(const reco::BasicClu
                                                             const CaloSubdetectorGeometry* geometry) 
 {
   if(  (hits!=0) && ( ((*hits)[0]).id().subdetId() != EcalBarrel )  ) {
-     //std::cout << "No basket correction for endacap!" << std::endl;
      return;
   }
 
