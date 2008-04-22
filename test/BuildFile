@@ -1,0 +1,8 @@
+<use name=RecoEcal/EgammaCoreTools>
+<use name=DataFormats/EcalRecHit>
+<use name=Geometry/CaloGeometry>
+<use name=Geometry/CaloTopology>
+
+<library file=testEcalClusterTools.cc name=testEcalClusterTools>
+<flags EDM_PLUGIN=1>
+</library>
