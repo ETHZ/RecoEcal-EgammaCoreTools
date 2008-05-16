@@ -6,3 +6,6 @@
 <library file=testEcalClusterTools.cc name=testEcalClusterTools>
 <flags EDM_PLUGIN=1>
 </library>
+<library file=testEcalClusterLazyTools.cc name=testEcalClusterLazyTools>
+<flags EDM_PLUGIN=1>
+</library>
