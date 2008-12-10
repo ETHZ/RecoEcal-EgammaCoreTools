@@ -9,3 +9,6 @@
 <library file=testEcalClusterLazyTools.cc name=testEcalClusterLazyTools>
 <flags EDM_PLUGIN=1>
 </library>
+<library file=testEcalClusterFunctions.cc name=testEcalClusterFunctions>
+<flags EDM_PLUGIN=1>
+</library>
